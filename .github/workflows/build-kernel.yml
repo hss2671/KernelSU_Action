@@ -306,8 +306,11 @@ jobs:
 
         - name: Make Custom-Anykernel3
       if: env.CHECK_FILE_IS_OK == 'true' && env.USE_CUSTOM_ANYKERNEL3 == 'true'
+      ru    - name: Make Custom-Anykernel3
+      if: env.CHECK_FILE_IS_OK == 'true' && env.USE_CUSTOM_ANYKERNEL3 == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
+       
         if [[ "${{ env.CUSTOM_ANYKERNEL3_SOURCE }}" =~ "git" ]]; then
             if [[ "${{ env.CUSTOM_ANYKERNEL3_SOURCE }}" == *".tar.gz" ]]; then
                 wget -O AnyKernel3.tar.gz "${{ env.CUSTOM_ANYKERNEL3_SOURCE }}"
@@ -322,11 +325,13 @@ jobs:
             unzip AnyKernel3.zip -d AnyKernel3/
         fi
         
+       
         cp android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} AnyKernel3/
         if [ "${{ env.CHECK_DTBO_IS_OK }}" = "true" ]; then
             cp android-kernel/out/arch/${{ env.ARCH }}/boot/dtbo.img AnyKernel3/
         fi
         rm -rf AnyKernel3/.git* AnyKernel3/README.md
+
 
 
     - name: Make boot image
