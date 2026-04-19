@@ -1,5 +1,4 @@
 name: Build Kernel
-于:
   workflow_dispatch:
 
 jobs:
