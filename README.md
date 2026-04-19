@@ -149,10 +149,10 @@ LTO 用于优化内核，但有些时候会导致错误
 
 ### Add overlayfs Config
 
-此参数为 KernelSU 模块和 system 分区读写提供支持
+此参数为 ResukiSU 模块和 system 分区读写提供支持
 自动在 defconfig 注入参数
 
-### Apply KernelSU Patch
+### Apply ResukiSU Patch
 
 如果 kprobe 工作不正常（通常是上游的 bug 或者内核版本过低），那你可以尝试启用此参数
 
