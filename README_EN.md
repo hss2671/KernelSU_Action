@@ -1,4 +1,4 @@
-# KernelSU Action
+# ResukiSU Action
 
 This action is for Non-GKI Kernels and has some universality and requires knowledge of the kernel and Android.
 
@@ -113,11 +113,11 @@ For example: `LLVM=1 LLVM_IAS=1`
 
 LTO is used to optimize the kernel but sometimes causes errors.
 
-### Enable KernelSU
+### Enable ResukiSU
 
-Enable KernelSU for troubleshooting kernel failures or compiling the kernel separately.
+Enable ResukiSU for troubleshooting kernel failures or compiling the kernel separately.
 
-#### KernelSU Branch or Tag
+#### ResukiSU Branch or Tag
 
 [KernelSU 1.0 no longer supports non-GKI kernels](https://github.com/tiann/KernelSU/issues/1705). The last supported version is [v0.9.5](https://github.com/tiann/KernelSU/tree/v0.9.5), please make sure to use the correct branch.
 
@@ -127,7 +127,7 @@ Select the branch or tag of KernelSU:
 - Latest TAG (stable version): `KERNELSU_TAG=v0.9.5`
 - Specify the TAG (such as `v0.5.2`): `KERNELSU_TAG=v0.5.2`
 
-#### KernelSU Manager signature size and hash
+#### ResukiSU Manager signature size and hash
 
 Customize the size and hash values of the KernelSU manager signature, if you don't need to customize the manager then please leave them empty or fill in the official default values:
 
@@ -184,7 +184,7 @@ Upload DTBO. Some devices require it.
 
 > Added from previous workflows, view historical commits
 
-Build boot.img, and you need to provide a `Source boot image`.
+Build boot.img, 和 you need to provide a `Source boot image`.
 
 ### Source Boot Image
 
