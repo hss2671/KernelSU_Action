@@ -1,14 +1,19 @@
-name: Build Kernel ticwatchpro3
+name: Build Kernel
 
 on:
   workflow_dispatch:
+    # GitHub allows at most 10 workflow_dispatch inputs, so these are the knobs
+    # worth changing per-run. Everything else lives in the config file selected
+    # by `config`, so a fork can keep one profile per device.
     inputs:
       config:
         description: "Config file to build (path, relative to the repo root)"
         required: false
-        default: "config/ticwatchpro3.env"
+        default: "config.env"
         type: string
-
+      # "config" on the options below means "use whatever the config file says".
+      # It is the default so that running the form without touching anything
+      # reproduces exactly what your profile describes.
       ksu_variant:
         description: "KernelSU variant"
         required: false
@@ -23,73 +28,46 @@ on:
           - resukisu
           - rsuntk
           - backslashxx
-
       ksu_ref:
         description: "KernelSU branch/tag/commit (blank = best default for your kernel)"
         required: false
         default: ""
         type: string
-
       hook_mode:
         description: "Syscall hook mechanism"
         required: false
         default: "config"
         type: choice
-        options:
-          - config
-          - auto
-          - kprobes
-          - manual
-          - tracepoint
-          - syscall
-          - none
-
+        options: [config, auto, kprobes, manual, tracepoint, syscall, none]
       susfs:
         description: "Apply SUSFS (mount/root hiding)"
         required: false
         default: "config"
         type: choice
-        options:
-          - config
-          - "true"
-          - "false"
-
+        options: [config, "true", "false"]
       path_umount:
         description: "Backport path_umount() (needed on kernels older than 5.9)"
         required: false
         default: "config"
         type: choice
-        options:
-          - config
-          - "true"
-          - "false"
-
+        options: [config, "true", "false"]
       hide_stuff:
         description: "Apply hide_stuff (extra fingerprint removal)"
         required: false
         default: "config"
         type: choice
-        options:
-          - config
-          - "true"
-          - "false"
-
+        options: [config, "true", "false"]
       kpm:
         description: "Enable KPM (SukiSU-Ultra only)"
         required: false
         default: "config"
         type: choice
-        options:
-          - config
-          - "true"
-          - "false"
-
+        options: [config, "true", "false"]
       extra_defconfig:
         description: "Extra defconfig lines, space separated (e.g. CONFIG_TMPFS_XATTR=y)"
         required: false
         default: ""
         type: string
-
       publish_release:
         description: "Publish the build as a GitHub Release"
         required: false
@@ -98,47 +76,18 @@ on:
 
   workflow_call:
     inputs:
-      config:
-        required: false
-        default: "config.env"
-        type: string
-      ksu_variant:
-        required: false
-        default: "config"
-        type: string
-      ksu_ref:
-        required: false
-        default: ""
-        type: string
-      hook_mode:
-        required: false
-        default: "config"
-        type: string
-      susfs:
-        required: false
-        default: "config"
-        type: string
-      path_umount:
-        required: false
-        default: "config"
-        type: string
-      hide_stuff:
-        required: false
-        default: "config"
-        type: string
-      kpm:
-        required: false
-        default: "config"
-        type: string
-      extra_defconfig:
-        required: false
-        default: ""
-        type: string
-      publish_release:
-        required: false
-        default: false
-        type: boolean
+      config:          { required: false, default: "config.env", type: string }
+      ksu_variant:     { required: false, default: "config",     type: string }
+      ksu_ref:         { required: false, default: "",           type: string }
+      hook_mode:       { required: false, default: "config",     type: string }
+      susfs:           { required: false, default: "config",     type: string }
+      path_umount:     { required: false, default: "config",     type: string }
+      hide_stuff:      { required: false, default: "config",     type: string }
+      kpm:             { required: false, default: "config",     type: string }
+      extra_defconfig: { required: false, default: "",           type: string }
+      publish_release: { required: false, default: false,        type: boolean }
 
+# Only one build per ref at a time; a newer run supersedes an older one.
 concurrency:
   group: build-kernel-${{ github.ref }}-${{ inputs.config }}
   cancel-in-progress: true
@@ -151,7 +100,6 @@ jobs:
     name: Build ${{ inputs.config }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
-
     outputs:
       device: ${{ steps.meta.outputs.device }}
       build_time: ${{ steps.meta.outputs.build_time }}
@@ -159,25 +107,12 @@ jobs:
       ksu_version: ${{ steps.meta.outputs.ksu_version }}
       kernel_release: ${{ steps.meta.outputs.kernel_release }}
       susfs_version: ${{ steps.meta.outputs.susfs_version }}
-
     env:
       WORKSPACE: ${{ github.workspace }}/kernel_workspace
       CONFIG_ENV: ${{ inputs.config }}
-
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-
-      # Force the legacy 4.9 kernel's Clang compiler into ARM target mode.
-      #
-      # CLANG_TRIPLE is used by the kernel build system for the
-      # cross-toolchain prefix, but it does not by itself change
-      # Clang's compilation target.
-      #
-      # Without this, cc-option() in arch/arm/Makefile is evaluated
-      # using Clang's native x86 target and incorrectly falls back to
-      # -march=armv5t.
-      KCFLAGS: "--target=arm-linux-androideabi"
 
       # workflow inputs -> IN_* overrides consumed by scripts/config.sh
       IN_KSU_VARIANT: ${{ inputs.ksu_variant }}
@@ -190,19 +125,10 @@ jobs:
       IN_EXTRA_DEFCONFIG: ${{ inputs.extra_defconfig }}
 
     steps:
-
-      # ==============================================================
-      # Source
-      # ==============================================================
-
       - uses: actions/checkout@v4
 
       - name: Resolve configuration
         run: bash scripts/config.sh
-
-      # ==============================================================
-      # Runner
-      # ==============================================================
 
       - name: Free up disk space
         if: env.REMOVE_UNUSED_PACKAGES == 'true'
@@ -218,6 +144,8 @@ jobs:
 
       - name: Add swap space
         run: |
+          # LTO links are memory-hungry and the runner has 16GB; a swap file is
+          # cheaper and more predictable than an unpinned third-party action.
           sudo fallocate -l 8G /mnt/swapfile
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile
@@ -227,250 +155,28 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
-
+          # Kept deliberately lean. The historical list here was copied from the
+          # full AOSP platform build docs and pulled in ~40 packages a kernel
+          # build never touches, several of which no longer exist on current
+          # Ubuntu (python2, lib32ncurses5-dev, ...).
           sudo apt-get install -y --no-install-recommends \
-            bc \
-            bison \
-            build-essential \
-            ccache \
-            cpio \
-            curl \
-            device-tree-compiler \
-            flex \
-            git \
-            libelf-dev \
-            libssl-dev \
-            lz4 \
-            make \
-            python3 \
-            rsync \
-            unzip \
-            zip \
-            zstd \
+            bc bison build-essential ccache cpio curl device-tree-compiler flex \
+            git libelf-dev libssl-dev lz4 make python3 rsync unzip zip zstd \
             libncurses-dev
-
           mkdir -p "$WORKSPACE"
-
-      # ==============================================================
-      # Toolchain / kernel source
-      # ==============================================================
 
       - name: Set up toolchain
         run: bash scripts/toolchain.sh
 
-      # ==============================================================
-      # Debug actual downloaded Clang
-      #
-      # IMPORTANT:
-      # Do not use `command -v clang` here before build.sh.
-      #
-      # build.sh adds CLANG_PATH to PATH inside build_kernel().
-      # At this point that has not happened yet.
-      #
-      # Therefore this step directly invokes:
-      #
-      #   ${CLANG_PATH}/clang
-      #
-      # This step does not modify compiler flags or the kernel source.
-      # ==============================================================
-
-      - name: Debug downloaded Clang
-        run: |
-          set -e
-
-          echo "===== CLANG_PATH ====="
-          echo "${CLANG_PATH}"
-
-          echo
-          echo "===== KCFLAGS ====="
-          echo "${KCFLAGS}"
-
-          CLANG_BIN="${CLANG_PATH}/clang"
-
-          echo
-          echo "===== Clang binary ====="
-          ls -l "${CLANG_BIN}"
-          readlink -f "${CLANG_BIN}"
-
-          echo
-          echo "===== Clang version ====="
-          "${CLANG_BIN}" --version
-
-          echo
-          echo "===== Clang dumpmachine ====="
-          "${CLANG_BIN}" -dumpmachine
-
-          echo
-          echo "===== Clang target help: ARM ====="
-          "${CLANG_BIN}" -target-help | grep -iE 'arm|aarch' | head -100 || true
-
-          echo
-          echo "===== Direct ARM target test ====="
-          "${CLANG_BIN}" \
-            --target=arm-linux-androideabi \
-            -mcpu=armv5t \
-            -c /dev/null \
-            -o /tmp/armv5t-test.o
-
-          echo
-          echo "===== Direct ARM target test result ====="
-          file /tmp/armv5t-test.o
-
-          echo
-          echo "===== ARM target test through KCFLAGS ====="
-          "${CLANG_BIN}" \
-            ${KCFLAGS} \
-            -mcpu=armv5t \
-            -c /dev/null \
-            -o /tmp/armv5t-kcflags-test.o
-
-          echo
-          echo "===== ARM target test through KCFLAGS result ====="
-          file /tmp/armv5t-kcflags-test.o
-
-          echo
-          echo "===== PATH lookup after adding CLANG_PATH ====="
-          export PATH="${CLANG_PATH}:${PATH}"
-
-          command -v clang
-          readlink -f "$(command -v clang)"
-
-          echo
-          echo "===== clang selected through PATH ====="
-          clang --version
-
-          echo
-          echo "===== clang selected through PATH: dumpmachine ====="
-          clang -dumpmachine
-
       - name: Fetch kernel source
         run: bash scripts/source.sh
-
-      # ==============================================================
-      # Debug ARM kernel CPU flags
-      #
-      # This runs against the original kernel source before KernelSU
-      # injection and kernel patches.
-      #
-      # It does not modify the kernel source.
-      #
-      # The purpose is to identify the exact source of:
-      #
-      #   -mcpu=armv5t
-      #
-      # without guessing or changing it.
-      # ==============================================================
-
-      - name: Debug ARM kernel CPU flags
-        run: |
-          set -e
-
-          KERNEL_DIR="$WORKSPACE/android-kernel"
-
-          echo "===== Kernel source ====="
-          echo "$KERNEL_DIR"
-
-          cd "$KERNEL_DIR"
-
-          echo
-          echo "===== armv5t references ====="
-          grep -RIn --exclude-dir=.git "armv5t" \
-            arch/arm/Makefile \
-            arch/arm/Kconfig \
-            Makefile \
-            Kbuild || true
-
-          echo
-          echo "===== -mcpu= references ====="
-          grep -RIn --exclude-dir=.git -- "-mcpu=" \
-            arch/arm \
-            Makefile \
-            Kbuild || true
-
-          echo
-          echo "===== CONFIG_CPU_ references ====="
-          grep -RIn --exclude-dir=.git "CONFIG_CPU_" \
-            arch/arm/Makefile \
-            arch/arm/Kconfig || true
-
-          echo
-          echo "===== Relevant ARM Makefile ====="
-          sed -n '1,260p' arch/arm/Makefile
-
-          echo
-          echo "===== Relevant ARM Kconfig CPU section ====="
-          grep -n -B5 -A20 "config CPU_" arch/arm/Kconfig || true
-
-      # ==============================================================
-      # KernelSU
-      # ==============================================================
 
       - name: Install KernelSU
         if: env.KSU_VARIANT != 'none'
         run: bash scripts/kernelsu.sh
 
-      # ==============================================================
-      # KernelSU / kernel patches
-      # ==============================================================
-
       - name: Apply kernel patches
         run: bash scripts/patches.sh all
-
-      # ==============================================================
-      # Fix legacy ARM kernel Clang flags
-      #
-      # Clang r450784e used by this 4.9 ARM kernel does not support:
-      #
-      #   -Wno-undefined-optimized
-      #   -Wno-vectorizer-no-neon
-      #
-      # The kernel Makefiles add these flags and Clang treats the unknown
-      # warning options as errors. Remove only these two exact entries.
-      # ==============================================================
-
-      - name: Fix Clang flags for legacy ARM kernel
-        run: |
-          set -e
-
-          KERNEL_DIR="$WORKSPACE/android-kernel"
-
-          echo "Kernel source: $KERNEL_DIR"
-
-          cd "$KERNEL_DIR"
-
-          echo "Checking unsupported Clang flags before patch..."
-
-          grep -n \
-            -e 'Wno-undefined-optimized' \
-            -e 'Wno-vectorizer-no-neon' \
-            Makefile arch/arm/Makefile || true
-
-          echo "Removing unsupported Clang warning flags..."
-
-          sed -i \
-            '/^[[:space:]]*KBUILD_CFLAGS[[:space:]]*+=[[:space:]]*-Wno-undefined-optimized[[:space:]]*$/d' \
-            Makefile
-
-          sed -i \
-            '/^[[:space:]]*KBUILD_CFLAGS[[:space:]]*+=[[:space:]]*-Wno-vectorizer-no-neon[[:space:]]*$/d' \
-            arch/arm/Makefile
-
-          echo "Checking unsupported Clang flags after patch..."
-
-          if grep -n \
-            -e 'Wno-undefined-optimized' \
-            -e 'Wno-vectorizer-no-neon' \
-            Makefile arch/arm/Makefile; then
-
-            echo "ERROR: unsupported Clang flags are still present."
-            exit 1
-          fi
-
-          echo "Clang flag cleanup completed successfully."
-
-      # ==============================================================
-      # ccache
-      # ==============================================================
 
       - name: Set up ccache
         if: env.ENABLE_CCACHE == 'true'
@@ -479,35 +185,11 @@ jobs:
           key: kernel-${{ env.DEVICE }}-${{ env.KSU_VARIANT }}-${{ env.KERNEL_VERSION }}
           max-size: 2G
 
-      # ==============================================================
-      # Build
-      # ==============================================================
-
       - name: Build kernel
-        run: |
-          echo "===== Kernel compiler target ====="
-          echo "KCFLAGS=${KCFLAGS}"
-
-          echo
-          echo "===== Clang target verification ====="
-          "${CLANG_PATH}/clang" \
-            ${KCFLAGS} \
-            -dumpmachine
-
-          echo
-          echo "===== Build kernel ====="
-          bash scripts/build.sh all
-
-      # ==============================================================
-      # Package
-      # ==============================================================
+        run: bash scripts/build.sh all
 
       - name: Package artifacts
         run: bash scripts/package.sh all
-
-      # ==============================================================
-      # Metadata
-      # ==============================================================
 
       - name: Export build metadata
         id: meta
@@ -520,10 +202,6 @@ jobs:
             echo "kernel_release=${KERNEL_RELEASE:-}"
             echo "susfs_version=${SUSFS_VERSION:-}"
           } >> "$GITHUB_OUTPUT"
-
-      # ==============================================================
-      # Artifacts
-      # ==============================================================
 
       - name: Upload kernel image
         uses: actions/upload-artifact@v4
@@ -553,21 +231,16 @@ jobs:
           name: boot${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
           path: kernel_workspace/boot.img
 
-  # ================================================================
-  # Release
-  # ================================================================
-
+  # Publishing is a separate job so the build itself runs with a read-only
+  # token; only this job gets contents:write, and only when asked for.
   release:
     name: Publish release
     needs: build
     if: inputs.publish_release
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
-
     steps:
-
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -578,35 +251,21 @@ jobs:
         run: |
           mkdir -p release
           shopt -s nullglob
-
           for dir in artifacts/AnyKernel3*/; do
             name=$(basename "${dir%/}")
-
-            (
-              cd "$dir"
-              zip -qr9 "${GITHUB_WORKSPACE}/release/${name}.zip" .
-            )
-
+            (cd "$dir" && zip -qr9 "${GITHUB_WORKSPACE}/release/${name}.zip" .)
             echo "packed ${name}.zip"
           done
-
-          for f in \
-            artifacts/*/Image* \
-            artifacts/*/boot.img \
-            artifacts/*/dtbo.img; do
-
+          for f in artifacts/*/Image* artifacts/*/boot.img artifacts/*/dtbo.img; do
             [ -f "$f" ] && cp "$f" release/
           done
-
           ls -la release/
 
       - name: Create release
-        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107633cd2f7a47c1df5cd8 # v2.3.2
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
         with:
           tag_name: ${{ needs.build.outputs.device }}-${{ needs.build.outputs.build_time }}
-
           name: ${{ needs.build.outputs.device }} · ${{ needs.build.outputs.ksu_name }} · ${{ needs.build.outputs.build_time }}
-
           body: |
             | | |
             | --- | --- |
@@ -616,5 +275,4 @@ jobs:
             | SUSFS | `${{ needs.build.outputs.susfs_version || 'not applied' }}` |
 
             Flash the AnyKernel3 zip from a custom recovery.
-
           files: release/*
