@@ -247,8 +247,99 @@ jobs:
       - name: Set up toolchain
         run: bash scripts/toolchain.sh
 
+      # ==============================================================
+      # Debug actual Clang toolchain
+      #
+      # This step does not modify compiler flags.
+      # It records which clang is actually selected by PATH
+      # and what target architecture it reports.
+      # ==============================================================
+
+      - name: Debug Clang toolchain
+        run: |
+          set -e
+
+          echo "===== Environment related to LLVM/Clang ====="
+          env | sort | grep -E '^(CC|CXX|CLANG|LLVM|PATH|CROSS_COMPILE)' || true
+
+          echo
+          echo "===== PATH ====="
+          echo "$PATH"
+
+          echo
+          echo "===== command -v clang ====="
+          command -v clang
+
+          echo
+          echo "===== type -a clang ====="
+          type -a clang || true
+
+          echo
+          echo "===== resolved clang path ====="
+          CLANG_BIN="$(command -v clang)"
+          readlink -f "$CLANG_BIN"
+
+          echo
+          echo "===== clang --version ====="
+          clang --version
+
+          echo
+          echo "===== clang -dumpmachine ====="
+          clang -dumpmachine
+
+          echo
+          echo "===== clang target help ====="
+          clang -target-help | head -100
+
       - name: Fetch kernel source
         run: bash scripts/source.sh
+
+      # ==============================================================
+      # Debug ARM kernel CPU flags
+      #
+      # This step does not modify the kernel source.
+      # It only identifies where armv5t / -mcpu= come from.
+      # ==============================================================
+
+      - name: Debug ARM kernel CPU flags
+        run: |
+          set -e
+
+          KERNEL_DIR="$WORKSPACE/android-kernel"
+
+          echo "===== Kernel source ====="
+          echo "$KERNEL_DIR"
+
+          cd "$KERNEL_DIR"
+
+          echo
+          echo "===== armv5t references ====="
+          grep -RIn --exclude-dir=.git "armv5t" \
+            arch/arm/Makefile \
+            arch/arm/Kconfig \
+            Makefile \
+            Kbuild || true
+
+          echo
+          echo "===== -mcpu= references ====="
+          grep -RIn --exclude-dir=.git -- "-mcpu=" \
+            arch/arm \
+            Makefile \
+            Kbuild || true
+
+          echo
+          echo "===== CONFIG_CPU_ references ====="
+          grep -RIn --exclude-dir=.git "CONFIG_CPU_" \
+            arch/arm/Makefile \
+            arch/arm/Kconfig || true
+
+          echo
+          echo "===== Relevant ARM Makefile ====="
+          sed -n '1,260p' arch/arm/Makefile
+
+          echo
+          echo "===== Relevant ARM Kconfig CPU section ====="
+          grep -n -B5 -A20 "config CPU_" arch/arm/Kconfig || true
 
       # ==============================================================
       # KernelSU
