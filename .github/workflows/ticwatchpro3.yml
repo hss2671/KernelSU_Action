@@ -168,6 +168,17 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
 
+      # Force the legacy 4.9 kernel's Clang compiler into ARM target mode.
+      #
+      # CLANG_TRIPLE is used by the kernel build system for the
+      # cross-toolchain prefix, but it does not by itself change
+      # Clang's compilation target.
+      #
+      # Without this, cc-option() in arch/arm/Makefile is evaluated
+      # using Clang's native x86 target and incorrectly falls back to
+      # -march=armv5t.
+      KCFLAGS: "--target=arm-linux-androideabi"
+
       # workflow inputs -> IN_* overrides consumed by scripts/config.sh
       IN_KSU_VARIANT: ${{ inputs.ksu_variant }}
       IN_KSU_REF: ${{ inputs.ksu_ref }}
@@ -270,6 +281,10 @@ jobs:
           echo "===== CLANG_PATH ====="
           echo "${CLANG_PATH}"
 
+          echo
+          echo "===== KCFLAGS ====="
+          echo "${KCFLAGS}"
+
           CLANG_BIN="${CLANG_PATH}/clang"
 
           echo
@@ -300,6 +315,18 @@ jobs:
           echo
           echo "===== Direct ARM target test result ====="
           file /tmp/armv5t-test.o
+
+          echo
+          echo "===== ARM target test through KCFLAGS ====="
+          "${CLANG_BIN}" \
+            ${KCFLAGS} \
+            -mcpu=armv5t \
+            -c /dev/null \
+            -o /tmp/armv5t-kcflags-test.o
+
+          echo
+          echo "===== ARM target test through KCFLAGS result ====="
+          file /tmp/armv5t-kcflags-test.o
 
           echo
           echo "===== PATH lookup after adding CLANG_PATH ====="
@@ -457,7 +484,19 @@ jobs:
       # ==============================================================
 
       - name: Build kernel
-        run: bash scripts/build.sh all
+        run: |
+          echo "===== Kernel compiler target ====="
+          echo "KCFLAGS=${KCFLAGS}"
+
+          echo
+          echo "===== Clang target verification ====="
+          "${CLANG_PATH}/clang" \
+            ${KCFLAGS} \
+            -dumpmachine
+
+          echo
+          echo "===== Build kernel ====="
+          bash scripts/build.sh all
 
       # ==============================================================
       # Package
@@ -562,7 +601,7 @@ jobs:
           ls -la release/
 
       - name: Create release
-        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
+        uses: softprops/action-gh-release@72f2c25fcb47643c292f7107633cd2f7a47c1df5cd8 # v2.3.2
         with:
           tag_name: ${{ needs.build.outputs.device }}-${{ needs.build.outputs.build_time }}
 
