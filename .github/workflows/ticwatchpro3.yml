@@ -248,48 +248,73 @@ jobs:
         run: bash scripts/toolchain.sh
 
       # ==============================================================
-      # Debug actual Clang toolchain
+      # Debug actual downloaded Clang
       #
-      # This step does not modify compiler flags.
-      # It records which clang is actually selected by PATH
-      # and what target architecture it reports.
+      # IMPORTANT:
+      # Do not use `command -v clang` here before build.sh.
+      #
+      # build.sh adds CLANG_PATH to PATH inside build_kernel().
+      # At this point that has not happened yet.
+      #
+      # Therefore this step directly invokes:
+      #
+      #   ${CLANG_PATH}/clang
+      #
+      # This step does not modify compiler flags or the kernel source.
       # ==============================================================
 
-      - name: Debug Clang toolchain
+      - name: Debug downloaded Clang
         run: |
           set -e
 
-          echo "===== Environment related to LLVM/Clang ====="
-          env | sort | grep -E '^(CC|CXX|CLANG|LLVM|PATH|CROSS_COMPILE)' || true
+          echo "===== CLANG_PATH ====="
+          echo "${CLANG_PATH}"
+
+          CLANG_BIN="${CLANG_PATH}/clang"
 
           echo
-          echo "===== PATH ====="
-          echo "$PATH"
+          echo "===== Clang binary ====="
+          ls -l "${CLANG_BIN}"
+          readlink -f "${CLANG_BIN}"
 
           echo
-          echo "===== command -v clang ====="
+          echo "===== Clang version ====="
+          "${CLANG_BIN}" --version
+
+          echo
+          echo "===== Clang dumpmachine ====="
+          "${CLANG_BIN}" -dumpmachine
+
+          echo
+          echo "===== Clang target help: ARM ====="
+          "${CLANG_BIN}" -target-help | grep -iE 'arm|aarch' | head -100 || true
+
+          echo
+          echo "===== Direct ARM target test ====="
+          "${CLANG_BIN}" \
+            --target=arm-linux-androideabi \
+            -mcpu=armv5t \
+            -c /dev/null \
+            -o /tmp/armv5t-test.o
+
+          echo
+          echo "===== Direct ARM target test result ====="
+          file /tmp/armv5t-test.o
+
+          echo
+          echo "===== PATH lookup after adding CLANG_PATH ====="
+          export PATH="${CLANG_PATH}:${PATH}"
+
           command -v clang
+          readlink -f "$(command -v clang)"
 
           echo
-          echo "===== type -a clang ====="
-          type -a clang || true
-
-          echo
-          echo "===== resolved clang path ====="
-          CLANG_BIN="$(command -v clang)"
-          readlink -f "$CLANG_BIN"
-
-          echo
-          echo "===== clang --version ====="
+          echo "===== clang selected through PATH ====="
           clang --version
 
           echo
-          echo "===== clang -dumpmachine ====="
+          echo "===== clang selected through PATH: dumpmachine ====="
           clang -dumpmachine
-
-          echo
-          echo "===== clang target help ====="
-          clang -target-help | head -100
 
       - name: Fetch kernel source
         run: bash scripts/source.sh
@@ -297,8 +322,16 @@ jobs:
       # ==============================================================
       # Debug ARM kernel CPU flags
       #
-      # This step does not modify the kernel source.
-      # It only identifies where armv5t / -mcpu= come from.
+      # This runs against the original kernel source before KernelSU
+      # injection and kernel patches.
+      #
+      # It does not modify the kernel source.
+      #
+      # The purpose is to identify the exact source of:
+      #
+      #   -mcpu=armv5t
+      #
+      # without guessing or changing it.
       # ==============================================================
 
       - name: Debug ARM kernel CPU flags
