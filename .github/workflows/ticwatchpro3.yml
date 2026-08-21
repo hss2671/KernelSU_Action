@@ -1,13 +1,19 @@
-name: Build Kernel Ticwatch Pro3
+name: Build Kernel tiwatchpro3
 
 on:
   workflow_dispatch:
+    # GitHub allows at most 10 workflow_dispatch inputs, so these are the knobs
+    # worth changing per-run. Everything else lives in the config file selected
+    # by `config`, so a fork can keep one profile per device.
     inputs:
       config:
         description: "Config file to build (path, relative to the repo root)"
         required: false
-        default: "config/ticwatchpro3.env"
+        default: "config.env"
         type: string
+      # "config" on the options below means "use whatever the config file says".
+      # It is the default so that running the form without touching anything
+      # reproduces exactly what your profile describes.
       ksu_variant:
         description: "KernelSU variant"
         required: false
@@ -70,7 +76,7 @@ on:
 
   workflow_call:
     inputs:
-      config:          { required: false, default: "config/ticwatchpro3.env", type: string }
+      config:          { required: false, default: "config.env", type: string }
       ksu_variant:     { required: false, default: "config",     type: string }
       ksu_ref:         { required: false, default: "",           type: string }
       hook_mode:       { required: false, default: "config",     type: string }
@@ -81,6 +87,7 @@ on:
       extra_defconfig: { required: false, default: "",           type: string }
       publish_release: { required: false, default: false,        type: boolean }
 
+# Only one build per ref at a time; a newer run supersedes an older one.
 concurrency:
   group: build-kernel-${{ github.ref }}-${{ inputs.config }}
   cancel-in-progress: true
@@ -107,6 +114,7 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
 
+      # workflow inputs -> IN_* overrides consumed by scripts/config.sh
       IN_KSU_VARIANT: ${{ inputs.ksu_variant }}
       IN_KSU_REF: ${{ inputs.ksu_ref }}
       IN_KSU_HOOK_MODE: ${{ inputs.hook_mode }}
@@ -136,6 +144,8 @@ jobs:
 
       - name: Add swap space
         run: |
+          # LTO links are memory-hungry and the runner has 16GB; a swap file is
+          # cheaper and more predictable than an unpinned third-party action.
           sudo fallocate -l 8G /mnt/swapfile
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile
@@ -145,10 +155,14 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
+          # Kept deliberately lean. The historical list here was copied from the
+          # full AOSP platform build docs and pulled in ~40 packages a kernel
+          # build never touches, several of which no longer exist on current
+          # Ubuntu (python2, lib32ncurses5-dev, ...).
           sudo apt-get install -y --no-install-recommends \
             bc bison build-essential ccache cpio curl device-tree-compiler flex \
             git libelf-dev libssl-dev lz4 make python3 rsync unzip zip zstd \
-            libncurses-dev lld
+            libncurses-dev
           mkdir -p "$WORKSPACE"
 
       - name: Set up toolchain
@@ -164,16 +178,6 @@ jobs:
       - name: Apply kernel patches
         run: bash scripts/patches.sh all
 
-      - name: Clean kernel out dir
-        run: |
-          cd kernel_workspace/android-kernel || exit 0
-          make O=out mrproper || true
-
-      - name: Use LLD as linker
-        run: |
-          echo "LD=ld.lld" >> $GITHUB_ENV
-          echo "LDFLAGS=-fuse-ld=lld" >> $GITHUB_ENV
-
       - name: Set up ccache
         if: env.ENABLE_CCACHE == 'true'
         uses: hendrikmuhs/ccache-action@v1.2
@@ -183,23 +187,6 @@ jobs:
 
       - name: Build kernel
         run: bash scripts/build.sh all
-
-      # 在 AnyKernel3 官方打包脚本执行前，用编译出的未压缩 Image 文件替换掉 zImage
-      - name: Swap AnyKernel3 kernel file to Image
-        run: |
-          IMAGE_PATH="kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/Image"
-          if [ -f "$IMAGE_PATH" ]; then
-            echo "Found raw Image at $IMAGE_PATH, swapping into AnyKernel3 directory..."
-            # 兼容 AnyKernel3 目录可能命名的 zImage / zImage-dtb / Image 文件
-            for f in zImage zImage-dtb Image; do
-              if [ -f "kernel_workspace/AnyKernel3/$f" ]; then
-                cp -f "$IMAGE_PATH" "kernel_workspace/AnyKernel3/$f"
-                echo "Successfully replaced AnyKernel3/$f with Raw Image."
-              fi
-            done
-          else
-            echo "Warning: Raw Image not found at $IMAGE_PATH"
-          fi
 
       - name: Package artifacts
         run: bash scripts/package.sh all
@@ -223,14 +210,6 @@ jobs:
           path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }}
           if-no-files-found: error
 
-      # 额外增加：独立上传未压缩的纯 Image 文件
-      - name: Upload raw Image
-        uses: actions/upload-artifact@v4
-        with:
-          name: Raw-Image${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
-          path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/Image
-          if-no-files-found: warn
-
       - name: Upload AnyKernel3
         uses: actions/upload-artifact@v4
         with:
@@ -252,6 +231,8 @@ jobs:
           name: boot${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
           path: kernel_workspace/boot.img
 
+  # Publishing is a separate job so the build itself runs with a read-only
+  # token; only this job gets contents:write, and only when asked for.
   release:
     name: Publish release
     needs: build
