@@ -184,6 +184,23 @@ jobs:
       - name: Build kernel
         run: bash scripts/build.sh all
 
+      # 在 AnyKernel3 官方打包脚本执行前，用编译出的未压缩 Image 文件替换掉 zImage
+      - name: Swap AnyKernel3 kernel file to Image
+        run: |
+          IMAGE_PATH="kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/Image"
+          if [ -f "$IMAGE_PATH" ]; then
+            echo "Found raw Image at $IMAGE_PATH, swapping into AnyKernel3 directory..."
+            # 兼容 AnyKernel3 目录可能命名的 zImage / zImage-dtb / Image 文件
+            for f in zImage zImage-dtb Image; do
+              if [ -f "kernel_workspace/AnyKernel3/$f" ]; then
+                cp -f "$IMAGE_PATH" "kernel_workspace/AnyKernel3/$f"
+                echo "Successfully replaced AnyKernel3/$f with Raw Image."
+              fi
+            done
+          else
+            echo "Warning: Raw Image not found at $IMAGE_PATH"
+          fi
+
       - name: Package artifacts
         run: bash scripts/package.sh all
 
@@ -205,6 +222,14 @@ jobs:
           name: ${{ env.KERNEL_IMAGE_NAME }}${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
           path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }}
           if-no-files-found: error
+
+      # 额外增加：独立上传未压缩的纯 Image 文件（保留原上传步骤不变）
+      - name: Upload raw Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: Raw-Image${{ env.LOCALVERSION }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
+          path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/Image
+          if-no-files-found: warn
 
       - name: Upload AnyKernel3
         uses: actions/upload-artifact@v4
