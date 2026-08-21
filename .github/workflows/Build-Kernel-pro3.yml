@@ -6,7 +6,7 @@ on:
       config:
         description: "Config file to build (path, relative to the repo root)"
         required: false
-        default: "config.env"
+        default: "config/ticwatchpro3.env"
         type: string
       ksu_variant:
         description: "KernelSU variant"
@@ -70,7 +70,7 @@ on:
 
   workflow_call:
     inputs:
-      config:          { required: false, default: "config.env", type: string }
+      config:          { required: false, default: "config/ticwatchpro3.env", type: string }
       ksu_variant:     { required: false, default: "config",     type: string }
       ksu_ref:         { required: false, default: "",           type: string }
       hook_mode:       { required: false, default: "config",     type: string }
@@ -223,7 +223,7 @@ jobs:
           path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }}
           if-no-files-found: error
 
-      # 额外增加：独立上传未压缩的纯 Image 文件（保留原上传步骤不变）
+      # 额外增加：独立上传未压缩的纯 Image 文件
       - name: Upload raw Image
         uses: actions/upload-artifact@v4
         with:
