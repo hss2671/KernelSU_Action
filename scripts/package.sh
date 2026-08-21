@@ -33,7 +33,7 @@ make_anykernel3() {
 		esac
 	else
 		retry 3 git clone -q --depth=1 https://github.com/osm0sis/AnyKernel3 "$AK3" \
-			|| die "failed to clone AnyKernel3"
+				|| die "failed to clone AnyKernel3"
 		# Device checks are meaningless here: we do not know the target's
 		# ro.product.device, and the zip is flashed deliberately by its builder.
 		sed -i 's/do.devicecheck=1/do.devicecheck=0/g' "${AK3}/anykernel.sh"
@@ -75,7 +75,13 @@ make_boot_image() {
 		|| die "could not stage the new kernel into the unpacked ramdisk"
 
 	# shellcheck disable=SC2086
-	python3 "${tools}/mkbootimg.py" $fmt -o boot.img || die "mkbootimg failed"
+	# Expand fmt safely into positional parameters preserving quoted fields.
+	# unpack_bootimg.py prints a shell-style commandline fragment; use eval+set
+	# so quoted parts remain single argv items (e.g. full kernel cmdline).
+	# Note: eval here is limited to parsing the fmt string (which is produced
+	# by our unpack_bootimg.py), not executing arbitrary commands.
+	eval "set -- $fmt"
+	python3 "${tools}/mkbootimg.py" "$@" -o boot.img || die "mkbootimg failed"
 	[ -s "${WORKSPACE}/boot.img" ] || die "boot.img was not produced"
 
 	ok "boot.img built ($(du -h "${WORKSPACE}/boot.img" | cut -f1))"
