@@ -1,4 +1,4 @@
-name: Build stone Kernel
+name: Build Kernel stone
 
 on:
   workflow_dispatch:
